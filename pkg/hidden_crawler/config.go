@@ -27,6 +27,8 @@ type Config struct {
 	FilterExtensionsStrings   customParamFlags
 	UniqueParameters          bool
 	FilterImages              bool
+	Threads                   int
+	Silent                    bool
 }
 
 func BuildConf(conf *Config) error {

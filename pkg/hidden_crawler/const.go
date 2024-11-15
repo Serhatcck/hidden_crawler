@@ -14,4 +14,5 @@ var constImageExtension = []string{
 	".svg",
 	".ico",
 	".raw",
+	".woff2",
 }

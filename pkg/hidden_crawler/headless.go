@@ -78,7 +78,7 @@ func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 					newUrl, _ := url.Parse(ev.Response.URL)
 					oldUrl, _ := url.Parse(target)
 					if newUrl.Host != oldUrl.Host {
-						cancel()
+						return
 
 					}
 				}
@@ -95,7 +95,8 @@ func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 			"Custom-Header":   "MyCustomValue", // İsteğe bağlı özel header
 		})), // Ekstra header'ları ayarla
 		chromedp.Navigate(target),     // Hedef URL
-		chromedp.Sleep(5*time.Second), // Yükleme için bekleme
+		chromedp.WaitReady("body"),    // Wait for the body to be fully loaded
+		chromedp.Sleep(1*time.Second), // Yükleme için bekleme
 		chromedp.Evaluate(`
 		(() => {
 			const urls = [];

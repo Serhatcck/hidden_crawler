@@ -1,7 +1,6 @@
 package hidden_crawler
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -9,13 +8,18 @@ import (
 
 type Worker struct {
 	//WorkQueue    []WorkQueue
-	Targets      chan string
-	TargetList   []string
-	FoundRequest []Request
-	Config       *Config
-	httpClient   *httpClient
-	parser       parser
-	waitGroup    sync.WaitGroup
+	Targets          chan string
+	TargetList       []string
+	FoundRequest     []Request
+	Config           *Config
+	httpClient       *httpClient
+	parser           parser
+	waitGroup        sync.WaitGroup
+	jobCount         int
+	doneJobCount     int
+	jobCountChan     chan int
+	doneJobCountChan chan int
+	isrunning        bool
 }
 
 func (w *Worker) appendNewTarget(req Request) {
@@ -26,9 +30,10 @@ func (w *Worker) appendNewTarget(req Request) {
 			return
 		}
 	}
+	w.jobCountChan <- 1
 	w.appendFoundRequest(req)
 	w.TargetList = append(w.TargetList, req.URL)
-	w.Targets <- req.URL
+	go func() { w.Targets <- req.URL }()
 }
 
 // if newUrl is usefull func will be return true
@@ -70,8 +75,10 @@ func (w *Worker) appendFoundRequestBatch(req []Request) {
 	req = w.parser.parseRequests(req)
 	var newReqList []Request
 	for _, newReq := range req {
-		if !w.isInScope(newReq.URL) {
-			continue
+		if w.Config.UseScope {
+			if !w.isInScope(newReq.URL) {
+				continue
+			}
 		}
 		var matcher = false
 		for _, oldReq := range w.FoundRequest {
@@ -102,15 +109,54 @@ func (w *Worker) Start() {
 	w.httpClient = newHttpClient(w.Config)
 	w.parser = NewParser(*w.Config)
 	w.Targets = make(chan string)
+	w.doneJobCountChan = make(chan int)
+	w.jobCountChan = make(chan int)
+	w.isrunning = true
+	w.doneJobCount = 0
+	w.jobCount = 0
+	go w.analyzeProgress()
 	w.run()
+}
+
+func (w *Worker) analyzeProgress() {
+	if !w.Config.Silent {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// Her bir saniyede bir toplam gorutin sayısını ekrana bas
+				//goroutinesPerSecondChan <- reqPerSecondCount
+				// counter'ı sıfırla
+				if !w.isrunning {
+					return
+				}
+
+				WriteStatus(w.jobCount, w.doneJobCount)
+
+				if w.jobCount == w.doneJobCount {
+					w.close()
+				}
+
+			case alpha := <-w.jobCountChan:
+				w.jobCount += alpha
+
+			case delta := <-w.doneJobCountChan:
+				w.doneJobCount += delta
+
+			}
+		}
+	}
 }
 
 func (w *Worker) run() {
 	hlClient := newHeadlessClient(w.Config)
+	threadLimiter := make(chan struct{}, w.Config.Threads) // Buffered channel to limit to 10 threads
 
 	for _, url := range w.Config.Targets {
 		go func() {
 			w.Targets <- url
+			w.jobCountChan <- 1
 			if w.Config.CheckRobotsfile {
 				reqs := robotstxtparser(url, *w.httpClient, *w.Config)
 				for _, req := range reqs {
@@ -119,15 +165,11 @@ func (w *Worker) run() {
 			}
 		}()
 	}
-	go func() {
-		time.Sleep(5 * time.Second)
-		w.waitGroup.Wait()
-		close(w.Targets)
-	}()
 
 	for target := range w.Targets {
-		fmt.Println("Target: ", target)
 		w.waitGroup.Add(1)
+		threadLimiter <- struct{}{}
+
 		go func(url string) {
 			headlessResp := hlClient.analyseWebPage(url)
 			//w.parseNetworkRequest(requests.NetworkRequest)
@@ -138,9 +180,15 @@ func (w *Worker) run() {
 			for _, htmlUrl := range newHtmlReq {
 				w.appendNewTarget(htmlUrl)
 			}
+			w.doneJobCountChan <- 1
 			w.waitGroup.Done()
+			<-threadLimiter
+
 		}(target)
-
 	}
+}
 
+func (w *Worker) close() {
+	w.waitGroup.Wait()
+	close(w.Targets)
 }
