@@ -1,8 +1,8 @@
 module github.com/Serhatcck/hidden_crawler
 
-go 1.23
+go 1.22
 
-toolchain go1.23.2
+toolchain go1.22.3
 
 require github.com/projectdiscovery/goflags v0.1.64
 
