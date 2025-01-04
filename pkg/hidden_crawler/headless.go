@@ -2,9 +2,9 @@ package hidden_crawler
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/network"
@@ -17,6 +17,7 @@ type headlessClient struct {
 	allocCtx context.Context
 	cancel   context.CancelFunc
 	config   Config
+	FormUrls []string
 }
 
 type headlessResponse struct {
@@ -39,7 +40,7 @@ func newHeadlessClient(conf *Config) headlessClient {
 		chromedp.Flag("disable-renderer-backgrounding", true),
 		chromedp.Flag("deny-permission-prompts", true),
 		chromedp.Flag("redirect", false),
-		chromedp.Flag("headless", false),
+		chromedp.Flag("headless", conf.Headless),
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	headlessClient.allocCtx = allocCtx
@@ -57,7 +58,6 @@ func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 	// Ağ izlemeyi etkinleştirin ve tüm istekleri yakalayın
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if req, ok := ev.(*network.EventRequestWillBeSent); ok {
-
 			headlessResponse.NetworkRequest = append(headlessResponse.NetworkRequest, hlClient.newHeadlessNetworkRequest(req))
 			// İstek URL'sini yakalayın
 			//fmt.Println(req.Request.Headers)
@@ -86,28 +86,17 @@ func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 		}
 	})
 
+	formFiller := &FormFiller{}
+
+	err := chromedp.Run(ctx, getChromedpNavigateTask(target))
+	if err != nil {
+		fmt.Println(err)
+		return headlessResponse
+	}
+
 	var htmlLinks []string
 
-	err := chromedp.Run(ctx,
-		network.Enable(),
-		network.SetExtraHTTPHeaders(network.Headers(map[string]interface{}{
-			"Accept-Language": "en-US,en;q=0.9",
-			"Custom-Header":   "MyCustomValue", // İsteğe bağlı özel header
-		})), // Ekstra header'ları ayarla
-		chromedp.Navigate(target),     // Hedef URL
-		chromedp.WaitReady("body"),    // Wait for the body to be fully loaded
-		chromedp.Sleep(1*time.Second), // Yükleme için bekleme
-		chromedp.Evaluate(`
-		(() => {
-			const urls = [];
-			document.querySelectorAll('a[href]').forEach(el => {
-				if (el.href) urls.push(el.href);
-				if (el.src) urls.push(el.src);
-			});
-			return urls;
-		})()
-	`, &htmlLinks),
-	)
+	htmlLinks, err = formFiller.GetaHref(ctx)
 
 	for _, url := range htmlLinks {
 		u, err := mergeURL(url, target)
@@ -116,9 +105,7 @@ func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 		}
 	}
 
-	if err != nil {
-		fmt.Println(err)
-	}
+	formFiller.SendForms(ctx, hlClient, target)
 
 	return headlessResponse
 }
@@ -127,9 +114,45 @@ func (hlClient headlessClient) newHeadlessNetworkRequest(req *network.EventReque
 	var newReq = Request{
 		Method: req.Request.Method,
 		URL:    req.Request.URL,
-		//Schema
-		//Host
+	}
+	if req.Request.HasPostData && len(req.Request.PostDataEntries) > 0 {
+		firstEntry := req.Request.PostDataEntries[0].Bytes
+		decodedBytes, err := base64.StdEncoding.DecodeString(firstEntry)
+		if err != nil {
+			//fmt.Println("Base64 decoding error:", err)
+		}
+		newReq.Body = string(decodedBytes)
+	}
+	if len(req.Request.Headers) > 0 {
+		newReq.Headers = convertHeaders(req.Request.Headers)
 	}
 
 	return newReq
+}
+
+func convertHeaders(input map[string]interface{}) map[string]string {
+	output := make(map[string]string)
+	for key, value := range input {
+		// Değerin string olup olmadığını kontrol et
+		strValue, ok := value.(string)
+		if !ok {
+			return nil
+		}
+		output[key] = strValue
+	}
+	return output
+}
+
+func (hlClient *headlessClient) isFormUniqe(formUrl string) bool {
+	for _, url := range hlClient.FormUrls {
+		if url == formUrl {
+			return false
+		}
+	}
+	hlClient.addFormUrl(formUrl)
+	return true
+}
+
+func (hlClient *headlessClient) addFormUrl(formUrl string) {
+	hlClient.FormUrls = append(hlClient.FormUrls, formUrl)
 }

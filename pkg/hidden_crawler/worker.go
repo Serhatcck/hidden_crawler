@@ -73,30 +73,28 @@ func (w *Worker) appendFoundRequest(req Request) {
 
 func (w *Worker) appendFoundRequestBatch(req []Request) {
 	req = w.parser.parseRequests(req)
-	var newReqList []Request
 	for _, newReq := range req {
 		if w.Config.UseScope {
 			if !w.isInScope(newReq.URL) {
 				continue
 			}
 		}
+
 		var matcher = false
 		for _, oldReq := range w.FoundRequest {
-
 			if !w.compareUrls(oldReq.URL, newReq.URL) {
-				continue
+				if oldReq.Method == newReq.Method {
+					matcher = true
+					continue
+				}
 			}
-			matcher = true
 
 		}
 		if !matcher {
-			newReqList = append(newReqList, newReq)
+			w.appendFoundRequest(newReq)
 		}
 	}
 
-	for _, req := range newReqList {
-		w.appendFoundRequest(req)
-	}
 }
 
 func InitWorker(conf *Config) *Worker {

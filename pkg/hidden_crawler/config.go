@@ -29,6 +29,8 @@ type Config struct {
 	FilterImages              bool
 	Threads                   int
 	Silent                    bool
+	Headless                  bool
+	OutputFile                string
 }
 
 func BuildConf(conf *Config) error {

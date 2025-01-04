@@ -5,6 +5,10 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"time"
+
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/chromedp"
 )
 
 func getExtension(u string) string {
@@ -83,4 +87,16 @@ func mergeURL(urlStr string, baseUrl string) (*url.URL, error) {
 
 	return parsedUrl, nil
 
+}
+
+func getChromedpNavigateTask(target string) chromedp.Tasks {
+	return chromedp.Tasks{
+		network.Enable(),
+		network.SetExtraHTTPHeaders(network.Headers(map[string]interface{}{
+			"Accept-Language": "en-US,en;q=0.9",
+		})), // Ekstra header'ları ayarla
+		chromedp.Navigate(target),       // Hedef URL
+		chromedp.WaitReady("body"),      // Wait for the body to be fully loaded
+		chromedp.Sleep(1 * time.Second), // Yükleme için bekleme
+	}
 }

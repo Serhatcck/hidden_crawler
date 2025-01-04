@@ -83,7 +83,7 @@ func (r *httpClient) Execute(req *Request) (Response, error) {
 	}
 
 	req.Host = httpreq.URL.Hostname()
-	req.Schema = httpreq.URL.Scheme
+	req.Scheme = httpreq.URL.Scheme
 
 	for k, v := range req.Headers {
 		httpreq.Header.Set(k, v)
