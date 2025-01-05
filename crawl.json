@@ -1,0 +1,1 @@
+{"url":"http://testphp.vulnweb.com/hpp/params.php?pp=valid&p=12","request":{"header":{"host":"testphp.vulnweb.com","method":"GET","path":"/hpp/params.php","scheme":"http"},"raw":"GET /hpp/params.php HTTP/1.1\r\nhost: testphp.vulnweb.com\r\n\r\n"}}

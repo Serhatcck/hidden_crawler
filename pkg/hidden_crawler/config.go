@@ -31,6 +31,7 @@ type Config struct {
 	Silent                    bool
 	Headless                  bool
 	OutputFile                string
+	MaxCrawlingSource         int
 }
 
 func BuildConf(conf *Config) error {

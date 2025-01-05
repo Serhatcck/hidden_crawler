@@ -33,6 +33,7 @@ func main() {
 
 		flagSet.BoolVarP(&config.FollowRedirectAnotherHost, "follow-redirect-another-host", "frah", false, "If the application redirects to a different domain, it determines whether the analysis will continue."),
 		flagSet.IntVarP(&config.Threads, "thread", "t", 10, "Number of Thread"),
+		flagSet.IntVarP(&config.MaxCrawlingSource, "maxcrawlingsource", "mcs", 2000, "Maximum crawling source"),
 	)
 
 	flagSet.CreateGroup("scope", "Scope",

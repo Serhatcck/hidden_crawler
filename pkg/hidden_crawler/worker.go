@@ -23,17 +23,18 @@ type Worker struct {
 }
 
 func (w *Worker) appendNewTarget(req Request) {
-
 	for _, target := range w.TargetList {
 
 		if !w.compareUrls(target, req.URL) {
 			return
 		}
 	}
-	w.jobCountChan <- 1
 	w.appendFoundRequest(req)
 	w.TargetList = append(w.TargetList, req.URL)
-	go func() { w.Targets <- req.URL }()
+	go func() {
+		w.jobCountChan <- 1
+		w.Targets <- req.URL
+	}()
 }
 
 // if newUrl is usefull func will be return true
@@ -106,7 +107,7 @@ func InitWorker(conf *Config) *Worker {
 func (w *Worker) Start() {
 	w.httpClient = newHttpClient(w.Config)
 	w.parser = NewParser(*w.Config)
-	w.Targets = make(chan string)
+	w.Targets = make(chan string, 1000)
 	w.doneJobCountChan = make(chan int)
 	w.jobCountChan = make(chan int)
 	w.isrunning = true
@@ -130,7 +131,7 @@ func (w *Worker) analyzeProgress() {
 					return
 				}
 
-				WriteStatus(w.jobCount, w.doneJobCount)
+				WriteStatus(w.Config.Url, w.jobCount, w.doneJobCount)
 
 				if w.jobCount == w.doneJobCount {
 					w.close()
@@ -141,7 +142,6 @@ func (w *Worker) analyzeProgress() {
 
 			case delta := <-w.doneJobCountChan:
 				w.doneJobCount += delta
-
 			}
 		}
 	}
@@ -165,10 +165,17 @@ func (w *Worker) run() {
 	}
 
 	for target := range w.Targets {
+
 		w.waitGroup.Add(1)
 		threadLimiter <- struct{}{}
 
 		go func(url string) {
+			if w.doneJobCount >= w.Config.MaxCrawlingSource {
+				w.doneJobCountChan <- 1
+				<-threadLimiter
+				return
+			}
+			defer w.waitGroup.Done()
 			headlessResp := hlClient.analyseWebPage(url)
 			//w.parseNetworkRequest(requests.NetworkRequest)
 			newRequests := w.parser.parseRequests(headlessResp.NetworkRequest)
@@ -179,7 +186,6 @@ func (w *Worker) run() {
 				w.appendNewTarget(htmlUrl)
 			}
 			w.doneJobCountChan <- 1
-			w.waitGroup.Done()
 			<-threadLimiter
 
 		}(target)
@@ -187,6 +193,11 @@ func (w *Worker) run() {
 }
 
 func (w *Worker) close() {
-	w.waitGroup.Wait()
-	close(w.Targets)
+	if w.isrunning {
+		w.isrunning = false
+		close(w.Targets)
+		close(w.doneJobCountChan)
+		close(w.jobCountChan)
+		w.waitGroup.Wait()
+	}
 }

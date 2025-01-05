@@ -52,7 +52,11 @@ func newHeadlessClient(conf *Config) headlessClient {
 
 func (hlClient *headlessClient) analyseWebPage(target string) headlessResponse {
 	var headlessResponse headlessResponse
-	ctx, cancel := chromedp.NewContext(hlClient.allocCtx)
+	customLog := func(format string, args ...interface{}) {
+		// Sadece belirli bir log seviyesini yazdırın
+		//log.Printf(format, args...)
+	}
+	ctx, cancel := chromedp.NewContext(hlClient.allocCtx, chromedp.WithLogf(customLog))
 	defer cancel()
 
 	// Ağ izlemeyi etkinleştirin ve tüm istekleri yakalayın
